@@ -29,11 +29,38 @@ const primaryButton =
 const outlineButton =
   "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs text-ink transition hover:bg-white/5 disabled:opacity-60";
 
+function Switch({ checked, disabled, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-60 ${
+        checked ? "bg-emerald-500" : "bg-line"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+          checked ? "left-[18px]" : "left-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
 export default function GoogleDriveCard() {
-  const { status, busy, connect, disconnect, verify } = useDrive();
+  const { status, busy, connect, disconnect, verify, setStorage } = useDrive();
 
   function confirmDisconnect() {
-    if (window.confirm("Disconnect Google Drive? Access will be revoked at Google.")) disconnect();
+    const count = status?.drive_file_count || 0;
+    const warning =
+      count > 0
+        ? `${count} of your files are stored in Google Drive. They will be unavailable until you reconnect the same Google account, and new uploads will use the default storage.\n\nDisconnect anyway?`
+        : "Disconnect Google Drive? Access will be revoked at Google.";
+    if (window.confirm(warning)) disconnect();
   }
 
   let body;
@@ -50,9 +77,25 @@ export default function GoogleDriveCard() {
         <p className="truncate text-xs text-ink" title={status.google_email}>
           {status.google_email}
         </p>
+
+        <div className="mt-3 flex items-start justify-between gap-3">
+          <span className="text-xs">Store new uploads in Drive</span>
+          <Switch
+            checked={status.storage_enabled}
+            disabled={busy !== null}
+            onChange={setStorage}
+            label="Store new uploads in Google Drive"
+          />
+        </div>
         <p className="mt-1 text-[11px] text-muted">
-          Drive storage for new uploads is not enabled yet. Files still use the current storage.
+          {status.storage_enabled
+            ? "Encrypted files are saved in the “Secure Cloud Storage” folder of your Drive. Older files stay in the default storage."
+            : "New uploads use the default storage."}
         </p>
+        {status.drive_file_count > 0 && (
+          <p className="mt-1 text-[11px] text-muted">{status.drive_file_count} file(s) stored in your Drive.</p>
+        )}
+
         <div className="mt-3 flex gap-2">
           <button type="button" className={outlineButton} onClick={verify} disabled={busy !== null}>
             <RefreshCw size={13} className={busy === "verify" ? "animate-spin" : ""} />
@@ -74,6 +117,11 @@ export default function GoogleDriveCard() {
     body = (
       <>
         <p className="text-xs text-muted">Authorization expired or was revoked.</p>
+        {status.drive_file_count > 0 && (
+          <p className="mt-1 text-[11px] text-muted">
+            {status.drive_file_count} file(s) in your Drive are unavailable until you reconnect.
+          </p>
+        )}
         <button type="button" className={`${primaryButton} mt-3`} onClick={connect} disabled={busy !== null}>
           {busy === "connect" ? "Redirecting…" : "Reconnect Google Drive"}
         </button>
@@ -91,6 +139,12 @@ export default function GoogleDriveCard() {
     body = (
       <>
         <p className="text-xs text-muted">Connect your own Google Drive account to store encrypted files there.</p>
+        {status.drive_file_count > 0 && (
+          <p className="mt-1 text-[11px] text-muted">
+            {status.drive_file_count} file(s) are stored in a Drive that isn’t connected. Connect the same Google
+            account to access them.
+          </p>
+        )}
         <button type="button" className={`${primaryButton} mt-3`} onClick={connect} disabled={busy !== null}>
           {busy === "connect" ? "Redirecting…" : "Connect Google Drive"}
         </button>

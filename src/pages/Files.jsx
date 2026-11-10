@@ -5,6 +5,7 @@ import api from "../services/api";
 import CategoryCard from "../components/CategoryCard";
 import FileBadge from "../components/FileBadge";
 import { useFiles } from "../context/FilesContext";
+import { extractApiError } from "../utils/errors";
 import {
   CATEGORY_KEYS,
   MAX_UPLOAD_BYTES,
@@ -16,12 +17,44 @@ import {
 
 const VIEW_KEY = "files-view";
 
+// Errors that would hit every remaining file in a multi-upload, so we stop early.
+const FATAL_UPLOAD_CODES = new Set([
+  "google_not_connected",
+  "google_reauth_required",
+  "google_wrong_account",
+  "google_not_configured",
+  "drive_quota_exceeded",
+  "drive_api_disabled",
+  "drive_access_denied",
+]);
+
+// When Drive can't be reached, the user may still remove the record from this app.
+const LOCAL_REMOVE_CODES = new Set([
+  "google_not_connected",
+  "google_reauth_required",
+  "google_wrong_account",
+  "drive_access_denied",
+]);
+
 function readView() {
   try {
     return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid";
   } catch {
     return "grid";
   }
+}
+
+function StorageTag({ file }) {
+  const drive = file.storage_provider === "google_drive";
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] ${
+        drive ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-muted"
+      }`}
+    >
+      {drive ? "Google Drive" : "Default"}
+    </span>
+  );
 }
 
 function FileActions({ file, busy, onDownload, onDelete }) {
@@ -110,9 +143,9 @@ export default function Files() {
         });
         done += 1;
       } catch (err) {
-        const detail = err.response?.data?.detail;
-        const reason = typeof detail === "string" ? detail : detail?.message || "upload failed";
+        const { code, message: reason } = await extractApiError(err, "upload failed");
         failures.push(`${file.name}: ${reason}`);
+        if (code && FATAL_UPLOAD_CODES.has(code)) break;
       }
     }
 
@@ -133,8 +166,12 @@ export default function Files() {
       link.download = file.filename;
       link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      setError("Download failed integrity verification or you are not allowed to access this file.");
+    } catch (err) {
+      const { code, message: reason } = await extractApiError(
+        err,
+        "Download failed integrity verification or you are not allowed to access this file."
+      );
+      setError(code === null && err.response?.status === 409 ? "Download failed integrity verification." : reason);
     } finally {
       setBusyId(null);
     }
@@ -148,8 +185,23 @@ export default function Files() {
     try {
       await api.delete(`/files/${file.id}`);
       await reload();
-    } catch {
-      setError(`Could not delete ${file.filename}.`);
+    } catch (err) {
+      const { code, message: reason } = await extractApiError(err, `Could not delete ${file.filename}.`);
+      if (file.storage_provider === "google_drive" && code && LOCAL_REMOVE_CODES.has(code)) {
+        const localOnly = window.confirm(
+          `${reason}\n\nRemove it from this app only? The encrypted copy will stay in your Google Drive.`
+        );
+        if (localOnly) {
+          try {
+            await api.delete(`/files/${file.id}`, { params: { local_only: true } });
+            await reload();
+          } catch {
+            setError(`Could not remove ${file.filename}.`);
+          }
+        }
+      } else {
+        setError(reason);
+      }
     } finally {
       setBusyId(null);
     }
@@ -272,9 +324,12 @@ export default function Files() {
                   </div>
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted">
-                    {formatBytes(file.size)} · {formatDate(file.uploaded_at, false)}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-muted">
+                      {formatBytes(file.size)} · {formatDate(file.uploaded_at, false)}
+                    </p>
+                    <StorageTag file={file} />
+                  </div>
                   <FileActions file={file} busy={busyId === file.id} onDownload={download} onDelete={remove} />
                 </div>
               </article>
@@ -283,13 +338,14 @@ export default function Files() {
         </div>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-xl bg-card ring-1 ring-line">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="border-b border-line text-xs text-muted">
               <tr>
                 <th className="px-4 py-3 font-normal">Name</th>
                 <th className="font-normal">Size</th>
                 <th className="font-normal">Type</th>
                 <th className="font-normal">Uploaded</th>
+                <th className="font-normal">Storage</th>
                 <th className="font-normal">Encryption</th>
                 <th />
               </tr>
@@ -308,6 +364,7 @@ export default function Files() {
                   <td className="text-muted">{formatBytes(file.size)}</td>
                   <td className="text-muted">{file.content_type}</td>
                   <td className="text-muted">{formatDate(file.uploaded_at)}</td>
+                  <td><StorageTag file={file} /></td>
                   <td className="text-muted">{file.encryption_status}</td>
                   <td className="py-3 pr-4">
                     <FileActions file={file} busy={busyId === file.id} onDownload={download} onDelete={remove} />

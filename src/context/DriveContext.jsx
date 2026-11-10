@@ -14,6 +14,8 @@ const REASON_MESSAGES = {
   no_refresh_token: "Google did not return offline access. Please try connecting again.",
   userinfo_failed: "Could not read your Google account details. Please try again.",
   account_in_use: "That Google account is already linked to another user of this app.",
+  account_has_drive_files:
+    "You have files stored in the Drive you connected before. Reconnect that same Google account instead.",
 };
 
 export function googleErrorMessage(err, fallback) {
@@ -28,7 +30,7 @@ export function DriveProvider({ children }) {
   const { search, pathname } = useLocation();
   const navigate = useNavigate();
   const [status, setStatus] = useState(null);
-  const [busy, setBusy] = useState(null); // "connect" | "disconnect" | "verify" | null
+  const [busy, setBusy] = useState(null); // "connect" | "disconnect" | "verify" | "storage" | null
   const [notice, setNotice] = useState(null); // { type: "success" | "error" | "warning", message }
 
   const refresh = useCallback(async (verify = false) => {
@@ -121,11 +123,33 @@ export function DriveProvider({ children }) {
     setBusy(null);
   }, [refresh]);
 
+  const setStorage = useCallback(
+    async (enabled) => {
+      setBusy("storage");
+      setNotice(null);
+      try {
+        await api.put("/google/storage", { enabled });
+        setNotice({
+          type: "success",
+          message: enabled
+            ? "New uploads will be stored in your Google Drive."
+            : "New uploads will use the default storage.",
+        });
+      } catch (err) {
+        setNotice({ type: "error", message: googleErrorMessage(err, "Could not change the storage setting.") });
+      } finally {
+        await refresh();
+        setBusy(null);
+      }
+    },
+    [refresh]
+  );
+
   const dismissNotice = useCallback(() => setNotice(null), []);
 
   const value = useMemo(
-    () => ({ status, busy, notice, connect, disconnect, verify, refresh, dismissNotice }),
-    [status, busy, notice, connect, disconnect, verify, refresh, dismissNotice]
+    () => ({ status, busy, notice, connect, disconnect, verify, setStorage, refresh, dismissNotice }),
+    [status, busy, notice, connect, disconnect, verify, setStorage, refresh, dismissNotice]
   );
 
   return <DriveContext.Provider value={value}>{children}</DriveContext.Provider>;

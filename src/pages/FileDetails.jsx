@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../services/api";
 import FileBadge from "../components/FileBadge";
+import { extractApiError } from "../utils/errors";
 import { formatBytes, formatDate } from "../utils/files";
 
 export default function FileDetails() {
@@ -25,8 +26,16 @@ export default function FileDetails() {
       link.download = file.filename;
       link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      setError("Download blocked. The file failed integrity verification or the request was not authorized.");
+    } catch (err) {
+      const { code, message } = await extractApiError(
+        err,
+        "Download blocked. The file failed integrity verification or the request was not authorized."
+      );
+      setError(
+        code === null && err.response?.status === 409
+          ? "Download blocked. The file failed integrity verification."
+          : message
+      );
     }
   }
 
@@ -47,6 +56,8 @@ export default function FileDetails() {
         <dd>{file.content_type}</dd>
         <dt className="text-muted">Uploaded</dt>
         <dd>{formatDate(file.uploaded_at)}</dd>
+        <dt className="text-muted">Storage</dt>
+        <dd>{file.storage_provider === "google_drive" ? "Google Drive" : "Default storage"}</dd>
         <dt className="text-muted">Encryption</dt>
         <dd>{file.encryption_status}</dd>
         <dt className="text-muted">Integrity</dt>
