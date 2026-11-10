@@ -1,5 +1,6 @@
 import { AlertTriangle, Cloud, CloudOff, RefreshCw, X } from "lucide-react";
 import { useDrive } from "../context/DriveContext";
+import { formatBytes } from "../utils/files";
 
 export function DriveNotice() {
   const { notice, dismissNotice } = useDrive();
@@ -51,8 +52,48 @@ function Switch({ checked, disabled, onChange, label }) {
   );
 }
 
+function QuotaBar({ quota }) {
+  if (quota === undefined) {
+    return <p className="mt-3 text-[11px] text-muted">Loading storage details…</p>;
+  }
+  if (quota === null) {
+    return <p className="mt-3 text-[11px] text-muted">Storage details unavailable.</p>;
+  }
+
+  const used = quota.usage ?? 0;
+  const percent = quota.limit ? Math.min(100, (used / quota.limit) * 100) : 0;
+  const tone = percent >= 90 ? "bg-rose-400" : percent >= 75 ? "bg-amber-300" : "bg-emerald-400";
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-baseline justify-between gap-2 text-[11px]">
+        <span>Drive storage</span>
+        <span className="text-muted">
+          {quota.unlimited ? `${formatBytes(used)} used` : `${formatBytes(used)} of ${formatBytes(quota.limit)}`}
+        </span>
+      </div>
+      {!quota.unlimited && (
+        <div
+          className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(percent)}
+          aria-label="Google Drive storage used"
+        >
+          <div className={`h-full ${tone}`} style={{ width: `${percent}%` }} />
+        </div>
+      )}
+      <p className="mt-1 text-[11px] text-muted">
+        {formatBytes(quota.app_bytes)} used by this app. The total is shared with Gmail and Photos.
+      </p>
+      {percent >= 90 && <p className="mt-1 text-[11px] text-rose-300">Your Drive is almost full.</p>}
+    </div>
+  );
+}
+
 export default function GoogleDriveCard() {
-  const { status, busy, connect, disconnect, verify, setStorage } = useDrive();
+  const { status, quota, busy, connect, disconnect, verify, setStorage } = useDrive();
 
   function confirmDisconnect() {
     const count = status?.drive_file_count || 0;
@@ -77,6 +118,8 @@ export default function GoogleDriveCard() {
         <p className="truncate text-xs text-ink" title={status.google_email}>
           {status.google_email}
         </p>
+
+        <QuotaBar quota={quota} />
 
         <div className="mt-3 flex items-start justify-between gap-3">
           <span className="text-xs">Store new uploads in Drive</span>

@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "./AuthContext";
+import { useDrive } from "./DriveContext";
 import { computeStats } from "../utils/files";
 
 const FilesContext = createContext(null);
 
 export function FilesProvider({ children }) {
   const { user } = useAuth();
+  const { refreshQuota } = useDrive();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -19,7 +21,8 @@ export function FilesProvider({ children }) {
     } catch {
       setError("Could not load files.");
     }
-  }, []);
+    refreshQuota(); // fire and forget; no-op unless Drive is connected
+  }, [refreshQuota]);
 
   useEffect(() => {
     if (!user) {

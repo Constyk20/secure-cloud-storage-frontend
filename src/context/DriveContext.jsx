@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "./AuthContext";
@@ -30,8 +30,10 @@ export function DriveProvider({ children }) {
   const { search, pathname } = useLocation();
   const navigate = useNavigate();
   const [status, setStatus] = useState(null);
+  const [quota, setQuota] = useState(undefined); // undefined = loading, null = unavailable
   const [busy, setBusy] = useState(null); // "connect" | "disconnect" | "verify" | "storage" | null
   const [notice, setNotice] = useState(null); // { type: "success" | "error" | "warning", message }
+  const connectedRef = useRef(false);
 
   const refresh = useCallback(async (verify = false) => {
     try {
@@ -44,6 +46,17 @@ export function DriveProvider({ children }) {
     }
   }, []);
 
+  const refreshQuota = useCallback(async () => {
+    if (!connectedRef.current) return;
+    try {
+      const response = await api.get("/google/storage/quota");
+      setQuota(response.data);
+    } catch {
+      // Keep any previous value; show "unavailable" only if we never had one.
+      setQuota((previous) => previous ?? null);
+    }
+  }, []);
+
   useEffect(() => {
     if (user) {
       refresh();
@@ -51,6 +64,17 @@ export function DriveProvider({ children }) {
       setStatus(null);
     }
   }, [user, refresh]);
+
+  // Load quota whenever the connection becomes (or stops being) active.
+  const connectionState = status?.status;
+  useEffect(() => {
+    connectedRef.current = connectionState === "connected";
+    if (connectedRef.current) {
+      refreshQuota();
+    } else {
+      setQuota(undefined);
+    }
+  }, [connectionState, refreshQuota]);
 
   // Handle the redirect back from /google/callback (?google=connected | error&reason=...)
   useEffect(() => {
@@ -118,10 +142,11 @@ export function DriveProvider({ children }) {
         setNotice({ type: "warning", message: "Google authorization expired or was revoked. Please reconnect." });
       } else {
         setNotice({ type: "success", message: "Google Drive connection is working." });
+        refreshQuota();
       }
     }
     setBusy(null);
-  }, [refresh]);
+  }, [refresh, refreshQuota]);
 
   const setStorage = useCallback(
     async (enabled) => {
@@ -148,8 +173,8 @@ export function DriveProvider({ children }) {
   const dismissNotice = useCallback(() => setNotice(null), []);
 
   const value = useMemo(
-    () => ({ status, busy, notice, connect, disconnect, verify, setStorage, refresh, dismissNotice }),
-    [status, busy, notice, connect, disconnect, verify, setStorage, refresh, dismissNotice]
+    () => ({ status, quota, busy, notice, connect, disconnect, verify, setStorage, refresh, refreshQuota, dismissNotice }),
+    [status, quota, busy, notice, connect, disconnect, verify, setStorage, refresh, refreshQuota, dismissNotice]
   );
 
   return <DriveContext.Provider value={value}>{children}</DriveContext.Provider>;
