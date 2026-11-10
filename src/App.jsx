@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
+import ShieldLoader from "./components/ShieldLoader";
 import { useAuth } from "./context/AuthContext";
 import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
@@ -11,7 +12,7 @@ import FileDetails from "./pages/FileDetails";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <p className="p-8 text-muted">Loading...</p>;
+  if (loading) return <ShieldLoader label="Securing your session…" fullScreen />;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
