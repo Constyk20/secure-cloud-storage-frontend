@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0e1013;
+  --color-panel: #16191d;
+  --color-card: #1c2026;
+  --color-line: #2a2f36;
+  --color-ink: #e7e9ec;
+  --color-muted: #8b929c;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  color-scheme: dark;
+}
